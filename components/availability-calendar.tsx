@@ -255,7 +255,7 @@ export function AvailabilityCalendar({
                     handleClick(cell);
                   }}
                   className={cn(
-                    "relative aspect-square flex items-center justify-center rounded text-[11px] font-medium select-none cursor-pointer min-h-[32px] transition-colors",
+                    "relative aspect-square flex items-center justify-center rounded text-[11px] font-medium select-none cursor-pointer min-h-[32px] transition-colors active:scale-90 active:opacity-70",
                     cellBg[myStatus],
                     myStatus === "not_set" && "border border-dashed border-border/40",
                     isWeekend && "font-bold"

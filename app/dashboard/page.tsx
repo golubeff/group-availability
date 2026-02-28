@@ -21,6 +21,13 @@ import type { Participant, Vote, RetreatType, RetreatProposal } from "@/lib/type
 export default function DashboardPage() {
   const [participant, setParticipant] = useState<Participant | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
+  const [savingCount, setSavingCount] = useState(0);
+  const isSaving = savingCount > 0;
+
+  const tracked = useCallback(async (fn: () => Promise<void>) => {
+    setSavingCount((c) => c + 1);
+    try { await fn(); } finally { setSavingCount((c) => c - 1); }
+  }, []);
   const [monthlyVotes, setMonthlyVotes] = useState<any[]>([]);
   const [miniAvailability, setMiniAvailability] = useState<any[]>([]);
   const [fullAvailability, setFullAvailability] = useState<any[]>([]);
@@ -103,40 +110,44 @@ export default function DashboardPage() {
 
   const handleMonthlyVote = async (fridayDate: string, vote: Vote | null) => {
     if (!participant) return;
-    if (vote === null) {
-      const existing = monthlyVotes.find(
-        (v: any) => v.participantId === participant.id && v.fridayDate === fridayDate
-      );
-      if (existing) {
+    tracked(async () => {
+      if (vote === null) {
+        const existing = monthlyVotes.find(
+          (v: any) => v.participantId === participant.id && v.fridayDate === fridayDate
+        );
+        if (existing) {
+          await fetch("/api/monthly", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              participantId: participant.id,
+              fridayDate,
+              vote: existing.vote,
+            }),
+          });
+        }
+      } else {
         await fetch("/api/monthly", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            participantId: participant.id,
-            fridayDate,
-            vote: existing.vote,
-          }),
+          body: JSON.stringify({ participantId: participant.id, fridayDate, vote }),
         });
       }
-    } else {
-      await fetch("/api/monthly", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ participantId: participant.id, fridayDate, vote }),
-      });
-    }
-    fetchAll();
+      await fetchAll();
+    });
   };
 
   const handleResetMonthly = async () => {
     if (!participant) return;
     setMonthlyVotes((prev: any[]) => prev.filter((v: any) => v.participantId !== participant.id));
-    await fetch("/api/monthly", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ participantId: participant.id }),
+    tracked(async () => {
+      await fetch("/api/monthly", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ participantId: participant.id }),
+      });
+      await fetchAll();
     });
-    fetchAll();
   };
 
   const handleAvailabilitySet = async (
@@ -166,15 +177,17 @@ export default function DashboardPage() {
       return idx >= 0 ? prev.map((a: any, i: number) => (i === idx ? entry : a)) : [...prev, entry];
     });
 
-    await fetch("/api/availability", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        participantId: participant.id,
-        retreatType,
-        date,
-        status,
-      }),
+    tracked(async () => {
+      await fetch("/api/availability", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          participantId: participant.id,
+          retreatType,
+          date,
+          status,
+        }),
+      });
     });
   };
 
@@ -187,12 +200,14 @@ export default function DashboardPage() {
           !(a.participantId === participant.id && a.retreatType === retreatType && a.source === "manual")
       )
     );
-    await fetch("/api/availability", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ participantId: participant.id, retreatType }),
+    tracked(async () => {
+      await fetch("/api/availability", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ participantId: participant.id, retreatType }),
+      });
+      await fetchAll();
     });
-    fetchAll();
   };
 
   const debouncedFetchRef = useRef<NodeJS.Timeout | null>(null);
@@ -208,35 +223,37 @@ export default function DashboardPage() {
     vote: Vote | null
   ) => {
     if (!participant) return;
-    if (vote === null) {
-      const allV = retreatType === "mini" ? miniVotes : fullVotes;
-      const existing = allV.find(
-        (v: any) =>
-          v.participantId === participant.id &&
-          v.retreatType === retreatType &&
-          v.startDate === startDate
-      );
-      if (existing) {
+    tracked(async () => {
+      if (vote === null) {
+        const allV = retreatType === "mini" ? miniVotes : fullVotes;
+        const existing = allV.find(
+          (v: any) =>
+            v.participantId === participant.id &&
+            v.retreatType === retreatType &&
+            v.startDate === startDate
+        );
+        if (existing) {
+          await fetch("/api/retreat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              participantId: participant.id,
+              retreatType,
+              startDate,
+              endDate,
+              vote: existing.vote,
+            }),
+          });
+        }
+      } else {
         await fetch("/api/retreat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            participantId: participant.id,
-            retreatType,
-            startDate,
-            endDate,
-            vote: existing.vote,
-          }),
+          body: JSON.stringify({ participantId: participant.id, retreatType, startDate, endDate, vote }),
         });
       }
-    } else {
-      await fetch("/api/retreat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ participantId: participant.id, retreatType, startDate, endDate, vote }),
-      });
-    }
-    fetchAll();
+      await fetchAll();
+    });
   };
 
   const handleIcalSave = async (url: string) => {
@@ -322,6 +339,7 @@ export default function DashboardPage() {
         onSwitch={handleSwitchUser}
         onOpenIcal={() => setShowIcal(true)}
         onDelete={handleDeleteProfile}
+        isSaving={isSaving}
       />
 
       {showIcal && (

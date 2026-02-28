@@ -30,7 +30,7 @@ export function VoteButton({ currentVote, onVote, size = "md" }: VoteButtonProps
     <button
       onClick={handleClick}
       className={cn(
-        "rounded-md font-medium transition-colors select-none touch-manipulation",
+        "rounded-md font-medium transition-all select-none touch-manipulation active:scale-90 active:opacity-70",
         size === "sm" ? "px-2 py-1 text-xs min-h-[32px]" : "px-3 py-1.5 text-sm min-h-[44px]",
         config
           ? config.className
