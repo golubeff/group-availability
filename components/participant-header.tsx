@@ -9,7 +9,6 @@ interface ParticipantHeaderProps {
   onSwitch: () => void;
   onOpenIcal: () => void;
   onDelete: () => void;
-  isSaving?: boolean;
 }
 
 function formatSyncTime(isoString: string): string {
@@ -25,7 +24,7 @@ function formatSyncTime(isoString: string): string {
   return `${diffDays}d ago`;
 }
 
-export function ParticipantHeader({ participant, onSwitch, onOpenIcal, onDelete, isSaving }: ParticipantHeaderProps) {
+export function ParticipantHeader({ participant, onSwitch, onOpenIcal, onDelete }: ParticipantHeaderProps) {
   const [showMenu, setShowMenu] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const hasCal = !!participant.icalUrl;
@@ -44,12 +43,6 @@ export function ParticipantHeader({ participant, onSwitch, onOpenIcal, onDelete,
             {participant.name.charAt(0).toUpperCase()}
           </div>
           <span className="font-medium text-sm">{participant.name}</span>
-          {isSaving && (
-            <span className="flex items-center gap-1 text-xs text-muted-foreground">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-              <span className="hidden sm:inline">Saving</span>
-            </span>
-          )}
         </button>
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" onClick={onOpenIcal} className="text-xs gap-1.5">

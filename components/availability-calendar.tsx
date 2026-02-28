@@ -103,15 +103,24 @@ export function AvailabilityCalendar({
   const paintTargetRef = useRef<CellStatus | null>(null);
   const paintedRef = useRef<Set<string>>(new Set());
   const [, forceRender] = useState(0);
+  const [savingCells, setSavingCells] = useState<Set<string>>(new Set());
+
+  const markSaving = useCallback((date: string) => {
+    setSavingCells((s) => new Set(s).add(date));
+    setTimeout(() => {
+      setSavingCells((s) => { const n = new Set(s); n.delete(date); return n; });
+    }, 500);
+  }, []);
 
   const paintCell = useCallback(
     (date: string, targetStatus: CellStatus) => {
       if (paintedRef.current.has(date)) return;
       paintedRef.current.add(date);
       onSetStatus(date, targetStatus);
+      markSaving(date);
       forceRender((n) => n + 1);
     },
-    [onSetStatus]
+    [onSetStatus, markSaving]
   );
 
   const handleMouseDown = useCallback(
@@ -148,8 +157,9 @@ export function AvailabilityCalendar({
     (date: string) => {
       const target = nextInCycle(getMy(date));
       onSetStatus(date, target);
+      markSaving(date);
     },
-    [myStatusMap, onSetStatus]
+    [myStatusMap, onSetStatus, markSaving]
   );
 
   // --- Desktop hover tooltip ---
@@ -262,6 +272,11 @@ export function AvailabilityCalendar({
                   )}
                 >
                   {d.getDate()}
+                  {savingCells.has(cell) && (
+                    <span className="absolute inset-0 flex items-center justify-center bg-white/50 dark:bg-black/30 rounded">
+                      <span className="w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                    </span>
+                  )}
                   {otherParticipants.length > 0 && (
                     <div className="absolute bottom-0.5 left-1/2 -translate-x-1/2 flex gap-[2px]">
                       {otherParticipants.map((p, idx) => {

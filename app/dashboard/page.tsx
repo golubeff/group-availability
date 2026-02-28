@@ -21,12 +21,8 @@ import type { Participant, Vote, RetreatType, RetreatProposal } from "@/lib/type
 export default function DashboardPage() {
   const [participant, setParticipant] = useState<Participant | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
-  const [savingCount, setSavingCount] = useState(0);
-  const isSaving = savingCount > 0;
-
   const tracked = useCallback(async (fn: () => Promise<void>) => {
-    setSavingCount((c) => c + 1);
-    try { await fn(); } finally { setSavingCount((c) => c - 1); }
+    try { await fn(); } catch (e) { console.error("Save failed", e); }
   }, []);
   const [monthlyVotes, setMonthlyVotes] = useState<any[]>([]);
   const [miniAvailability, setMiniAvailability] = useState<any[]>([]);
@@ -339,7 +335,6 @@ export default function DashboardPage() {
         onSwitch={handleSwitchUser}
         onOpenIcal={() => setShowIcal(true)}
         onDelete={handleDeleteProfile}
-        isSaving={isSaving}
       />
 
       {showIcal && (
