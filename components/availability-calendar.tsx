@@ -92,6 +92,9 @@ export function AvailabilityCalendar({
     return e ? (e.status as CellStatus) : "not_set";
   }
 
+  // --- Touch lock: prevent synthetic mouse events after touch ---
+  const touchLockRef = useRef(false);
+
   // --- Desktop mouse drag-to-paint ---
   const mouseDownRef = useRef(false);
   const paintTargetRef = useRef<CellStatus | null>(null);
@@ -237,24 +240,25 @@ export function AvailabilityCalendar({
                   key={cell}
                   data-date={cell}
                   onMouseDown={(e) => {
+                    if (touchLockRef.current) return;
                     e.preventDefault();
                     handleMouseDown(cell);
                   }}
                   onMouseEnter={(e) => {
+                    if (touchLockRef.current) return;
                     handleMouseEnterCell(cell);
                     if (!mouseDownRef.current) {
                       setTooltip({ date: cell, rect: e.currentTarget.getBoundingClientRect() });
                     }
                   }}
                   onMouseLeave={() => setTooltip(null)}
-                  onClick={(e) => {
-                    // Only handle clicks from touch — mouse clicks are handled by mouseDown
-                    if (e.detail === 0) handleClick(cell);
+                  onTouchStart={() => {
+                    touchLockRef.current = true;
                   }}
                   onTouchEnd={(e) => {
-                    // Tap on mobile: cycle status
                     e.preventDefault();
                     handleClick(cell);
+                    setTimeout(() => { touchLockRef.current = false; }, 500);
                   }}
                   className={cn(
                     "relative aspect-square flex items-center justify-center rounded text-[11px] font-medium select-none cursor-pointer min-h-[32px] transition-colors active:scale-90 active:opacity-70",
