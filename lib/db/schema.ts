@@ -1,4 +1,4 @@
-import { pgTable, serial, text, date, real, timestamp, unique } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, date, real, timestamp, unique, jsonb } from "drizzle-orm/pg-core";
 
 export const participants = pgTable("participants", {
   id: serial("id").primaryKey(),
@@ -58,3 +58,10 @@ export const icalEvents = pgTable(
   },
   (t) => [unique().on(t.participantId, t.date, t.title)]
 );
+
+export const backups = pgTable("backups", {
+  id: serial("id").primaryKey(),
+  createdAt: timestamp("created_at").defaultNow(),
+  dataHash: text("data_hash").notNull(),
+  data: jsonb("data").notNull(),
+});

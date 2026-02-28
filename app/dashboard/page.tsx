@@ -22,7 +22,14 @@ export default function DashboardPage() {
   const [participant, setParticipant] = useState<Participant | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const tracked = useCallback(async (fn: () => Promise<void>) => {
-    try { await fn(); } catch (e) { console.error("Save failed", e); }
+    try {
+      await fn();
+      fetch("/api/backup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      }).catch(() => {});
+    } catch (e) { console.error("Save failed", e); }
   }, []);
   const [monthlyVotes, setMonthlyVotes] = useState<any[]>([]);
   const [miniAvailability, setMiniAvailability] = useState<any[]>([]);
