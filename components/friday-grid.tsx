@@ -2,6 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { VoteButton, VoteSummary } from "@/components/vote-button";
 import { ResultsBar } from "@/components/results-bar";
 import { getAllFridaysPerMonth, formatDateShort } from "@/lib/dates";
@@ -29,6 +30,7 @@ interface FridayGridProps {
   icalEvents: IcalEvent[];
   onVote: (fridayDate: string, vote: Vote | null) => void;
   retreatMonths?: Set<string>;
+  onReset?: () => void;
 }
 
 export function FridayGrid({
@@ -38,11 +40,21 @@ export function FridayGrid({
   icalEvents,
   onVote,
   retreatMonths,
+  onReset,
 }: FridayGridProps) {
   const months = getAllFridaysPerMonth();
+  const hasMyVotes = allVotes.some((v) => v.participantId === participant.id);
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="space-y-4">
+      {hasMyVotes && onReset && (
+        <div className="flex justify-end">
+          <Button variant="outline" size="sm" className="text-xs h-7" onClick={onReset}>
+            Reset all
+          </Button>
+        </div>
+      )}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {months.map((monthData) => {
         const isRetreatMonth = retreatMonths?.has(monthData.month);
 
@@ -119,6 +131,7 @@ export function FridayGrid({
           </Card>
         );
       })}
+      </div>
     </div>
   );
 }

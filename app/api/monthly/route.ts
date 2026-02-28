@@ -43,3 +43,12 @@ export async function POST(req: NextRequest) {
     .returning();
   return NextResponse.json(created);
 }
+
+export async function DELETE(req: NextRequest) {
+  const { participantId } = await req.json();
+  if (!participantId) {
+    return NextResponse.json({ error: "participantId required" }, { status: 400 });
+  }
+  await db.delete(monthlyVotes).where(eq(monthlyVotes.participantId, participantId));
+  return NextResponse.json({ ok: true });
+}

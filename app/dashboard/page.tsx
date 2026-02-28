@@ -128,6 +128,17 @@ export default function DashboardPage() {
     fetchAll();
   };
 
+  const handleResetMonthly = async () => {
+    if (!participant) return;
+    setMonthlyVotes((prev: any[]) => prev.filter((v: any) => v.participantId !== participant.id));
+    await fetch("/api/monthly", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ participantId: participant.id }),
+    });
+    fetchAll();
+  };
+
   const handleAvailabilitySet = async (
     retreatType: RetreatType,
     date: string,
@@ -357,6 +368,7 @@ export default function DashboardPage() {
               icalEvents={icalEvents}
               onVote={handleMonthlyVote}
               retreatMonths={retreatMonths}
+              onReset={handleResetMonthly}
             />
           </TabsContent>
 
