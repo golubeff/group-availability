@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
     for (const p of allParticipants) {
       let worstStatus: AvailabilityStatus = "available";
       for (const d of datesInPeriod) {
-        const s = availByParticipantDate.get(`${p.id}:${d}`) || "available";
+        const s = availByParticipantDate.get(`${p.id}:${d}`) || "unavailable";
         if (s === "unavailable") {
           worstStatus = "unavailable";
           break;

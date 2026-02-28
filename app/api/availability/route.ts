@@ -34,21 +34,21 @@ export async function POST(req: NextRequest) {
       )
     );
 
-  if (existing.length > 0) {
-    if (status === "available" && existing[0].source === "manual") {
+  // "unavailable" is the default — remove DB entry to go back to default
+  if (status === "unavailable") {
+    if (existing.length > 0) {
       await db.delete(retreatAvailability).where(eq(retreatAvailability.id, existing[0].id));
-      return NextResponse.json({ deleted: true });
     }
+    return NextResponse.json({ deleted: true });
+  }
+
+  if (existing.length > 0) {
     const [updated] = await db
       .update(retreatAvailability)
       .set({ status, source: "manual" })
       .where(eq(retreatAvailability.id, existing[0].id))
       .returning();
     return NextResponse.json(updated);
-  }
-
-  if (status === "available") {
-    return NextResponse.json({ ok: true });
   }
 
   const [created] = await db

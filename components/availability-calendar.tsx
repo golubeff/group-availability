@@ -24,28 +24,44 @@ interface AvailabilityCalendarProps {
   onPaintEnd?: () => void;
 }
 
-const myStatusColors: Record<AvailabilityStatus, string> = {
+type CellStatus = AvailabilityStatus | "not_set";
+
+const cellColors: Record<CellStatus, string> = {
+  not_set: "bg-white dark:bg-muted/30 border border-dashed border-border/50",
   available: "bg-emerald-100 dark:bg-emerald-900/30",
   inconvenient: "bg-amber-200 dark:bg-amber-900/40",
   unavailable: "bg-red-200 dark:bg-red-900/50",
 };
 
-function nextStatus(current: AvailabilityStatus): AvailabilityStatus {
-  const cycle: AvailabilityStatus[] = ["available", "inconvenient", "unavailable"];
-  return cycle[(cycle.indexOf(current) + 1) % cycle.length];
-}
+const statusLabels: Record<CellStatus, string> = {
+  not_set: "Not set",
+  available: "Available",
+  inconvenient: "If must",
+  unavailable: "Unavailable",
+};
 
-const dotColors: Record<string, string> = {
+const dotColors: Record<CellStatus, string> = {
+  not_set: "bg-gray-300",
   available: "bg-emerald-500",
   inconvenient: "bg-amber-500",
   unavailable: "bg-red-500",
 };
 
-interface TooltipData {
-  date: string;
-  rect: DOMRect;
-  myStatus: AvailabilityStatus;
-  others: { name: string; status: AvailabilityStatus }[];
+const initialColors: Record<CellStatus, string> = {
+  not_set: "text-gray-400",
+  available: "text-emerald-600",
+  inconvenient: "text-amber-600",
+  unavailable: "text-red-500",
+};
+
+const cycle: CellStatus[] = ["not_set", "available", "inconvenient", "unavailable"];
+
+function nextStatus(current: CellStatus): CellStatus {
+  return cycle[(cycle.indexOf(current) + 1) % cycle.length];
+}
+
+function getEffective(status: CellStatus): AvailabilityStatus {
+  return status === "not_set" ? "unavailable" : status;
 }
 
 export function AvailabilityCalendar({
@@ -60,23 +76,27 @@ export function AvailabilityCalendar({
   const myAvailability = allAvailability.filter(
     (a) => a.participantId === participant.id && a.retreatType === retreatType
   );
-  const myStatusMap = new Map(myAvailability.map((a) => [a.date, a.status as AvailabilityStatus]));
+  const myStatusMap = new Map<string, CellStatus>(
+    myAvailability.map((a) => [a.date, a.status as AvailabilityStatus])
+  );
 
-  const paintStatusRef = useRef<AvailabilityStatus | null>(null);
+  function getMyCellStatus(date: string): CellStatus {
+    return myStatusMap.get(date) || "not_set";
+  }
+
+  const paintStatusRef = useRef<CellStatus | null>(null);
   const paintedRef = useRef<Set<string>>(new Set());
   const [isPainting, setIsPainting] = useState(false);
-  const [tooltip, setTooltip] = useState<TooltipData | null>(null);
-  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const longPressFiredRef = useRef(false);
+  const [tooltip, setTooltip] = useState<{ date: string; rect: DOMRect } | null>(null);
 
   const startPaint = useCallback(
     (date: string) => {
-      const current = myStatusMap.get(date) || "available";
+      const current = getMyCellStatus(date);
       const target = nextStatus(current);
       paintStatusRef.current = target;
       paintedRef.current = new Set([date]);
       setIsPainting(true);
-      onSetStatus(date, target);
+      onSetStatus(date, getEffective(target));
     },
     [myStatusMap, onSetStatus]
   );
@@ -86,7 +106,7 @@ export function AvailabilityCalendar({
       if (!isPainting || paintStatusRef.current === null) return;
       if (paintedRef.current.has(date)) return;
       paintedRef.current.add(date);
-      onSetStatus(date, paintStatusRef.current);
+      onSetStatus(date, getEffective(paintStatusRef.current));
     },
     [isPainting, onSetStatus]
   );
@@ -98,70 +118,30 @@ export function AvailabilityCalendar({
       setIsPainting(false);
       onPaintEnd?.();
     }
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
   }, [onPaintEnd]);
 
   const otherParticipants = participants.filter((p) => p.id !== participant.id);
 
-  function buildTooltip(date: string, el: HTMLElement): TooltipData {
-    const rect = el.getBoundingClientRect();
-    const others = otherParticipants.map((p) => {
-      const entry = allAvailability.find(
-        (a) => a.participantId === p.id && a.retreatType === retreatType && a.date === date
-      );
-      return { name: p.name, status: (entry?.status || "available") as AvailabilityStatus };
-    });
-    return {
-      date,
-      rect,
-      myStatus: myStatusMap.get(date) || "available",
-      others,
-    };
+  function getOtherStatus(pId: number, date: string): CellStatus {
+    const entry = allAvailability.find(
+      (a) => a.participantId === pId && a.retreatType === retreatType && a.date === date
+    );
+    return entry ? (entry.status as AvailabilityStatus) : "not_set";
   }
 
   const handleMouseEnter = useCallback(
     (date: string, el: HTMLElement) => {
       if (isPainting) return;
-      setTooltip(buildTooltip(date, el));
+      setTooltip({ date, rect: el.getBoundingClientRect() });
     },
-    [isPainting, myStatusMap, allAvailability, otherParticipants, retreatType]
+    [isPainting]
   );
 
-  const handleMouseLeave = useCallback(() => {
-    setTooltip(null);
-  }, []);
-
-  const handleTouchStart = useCallback(
-    (date: string, el: HTMLElement) => {
-      longPressFiredRef.current = false;
-      longPressTimerRef.current = setTimeout(() => {
-        longPressFiredRef.current = true;
-        setTooltip(buildTooltip(date, el));
-      }, 400);
-    },
-    [myStatusMap, allAvailability, otherParticipants, retreatType]
-  );
-
-  const handleTouchEnd = useCallback(() => {
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
-  }, []);
-
-  // Dismiss tooltip on scroll or outside tap
   useEffect(() => {
     if (!tooltip) return;
     const dismiss = () => setTooltip(null);
     window.addEventListener("scroll", dismiss, true);
-    const timer = setTimeout(dismiss, 4000);
-    return () => {
-      window.removeEventListener("scroll", dismiss, true);
-      clearTimeout(timer);
-    };
+    return () => window.removeEventListener("scroll", dismiss, true);
   }, [tooltip]);
 
   const months = groupByMonth(dates);
@@ -169,19 +149,23 @@ export function AvailabilityCalendar({
   return (
     <div
       className="space-y-4"
-      onMouseLeave={() => { stopPaint(); handleMouseLeave(); }}
+      onMouseLeave={() => { stopPaint(); setTooltip(null); }}
       onMouseUp={stopPaint}
       onTouchEnd={stopPaint}
       onTouchCancel={stopPaint}
     >
-      <div className="flex gap-4 text-xs flex-wrap">
+      <div className="flex gap-3 text-xs flex-wrap">
+        <div className="flex items-center gap-1">
+          <div className="w-4 h-4 rounded bg-white border border-dashed" />
+          <span>Not set</span>
+        </div>
         <div className="flex items-center gap-1">
           <div className="w-4 h-4 rounded bg-emerald-100 dark:bg-emerald-900/30 border" />
           <span>Available</span>
         </div>
         <div className="flex items-center gap-1">
           <div className="w-4 h-4 rounded bg-amber-200 dark:bg-amber-900/40 border" />
-          <span>Inconvenient</span>
+          <span>If must</span>
         </div>
         <div className="flex items-center gap-1">
           <div className="w-4 h-4 rounded bg-red-200 dark:bg-red-900/50 border" />
@@ -189,7 +173,7 @@ export function AvailabilityCalendar({
         </div>
       </div>
       <p className="text-xs text-muted-foreground">
-        Tap to cycle status. Drag to paint. Hover (or long-press on mobile) for details.
+        Tap to cycle: Not set → Available → If must → Unavailable. Drag to paint. Unset dates count as unavailable.
       </p>
 
       {months.map(({ label, weeks }) => (
@@ -202,29 +186,21 @@ export function AvailabilityCalendar({
               </div>
             ))}
             {weeks.flat().map((cell, i) => {
-              if (!cell) {
-                return <div key={`empty-${i}`} className="mb-1" />;
-              }
-              const myStatus = myStatusMap.get(cell) || "available";
-              const othersWithIssues = otherParticipants
-                .map((p) => {
-                  const entry = allAvailability.find(
-                    (a) => a.participantId === p.id && a.retreatType === retreatType && a.date === cell
-                  );
-                  return { p, status: (entry?.status || "available") as AvailabilityStatus };
-                })
-                .filter((e) => e.status !== "available");
+              if (!cell) return <div key={`empty-${i}`} className="mb-1" />;
+
+              const myStatus = getMyCellStatus(cell);
               const d = parseDate(cell);
               const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+
+              const othersStatuses = otherParticipants.map((p) => ({
+                p,
+                status: getOtherStatus(p.id, cell),
+              }));
 
               return (
                 <div key={cell} className="mb-1 flex flex-col items-center">
                   <div
                     onPointerDown={(e) => {
-                      if (longPressFiredRef.current) {
-                        e.preventDefault();
-                        return;
-                      }
                       e.preventDefault();
                       (e.target as HTMLElement).releasePointerCapture(e.pointerId);
                       startPaint(cell);
@@ -233,33 +209,20 @@ export function AvailabilityCalendar({
                       continuePaint(cell);
                       handleMouseEnter(cell, e.currentTarget);
                     }}
-                    onPointerLeave={() => {
-                      handleMouseLeave();
-                    }}
-                    onTouchStart={(e) => {
-                      handleTouchStart(cell, e.currentTarget);
-                    }}
-                    onTouchEnd={handleTouchEnd}
-                    onTouchMove={() => {
-                      handleTouchEnd();
-                      setTooltip(null);
-                    }}
+                    onPointerLeave={() => setTooltip(null)}
                     className={cn(
                       "relative w-full aspect-square flex items-center justify-center rounded text-[11px] font-medium select-none cursor-pointer min-h-[32px] transition-colors",
-                      myStatusColors[myStatus],
+                      cellColors[myStatus],
                       isWeekend && "font-bold"
                     )}
                   >
                     {d.getDate()}
                   </div>
-                  <div className="flex justify-center gap-[1px] min-h-[14px] mt-[1px]">
-                    {othersWithIssues.map((o) => (
+                  <div className="flex justify-center gap-[1px] min-h-[12px] mt-[1px]">
+                    {othersStatuses.map((o) => (
                       <span
                         key={o.p.id}
-                        className={cn(
-                          "text-[8px] font-bold leading-none",
-                          o.status === "unavailable" ? "text-red-500" : "text-amber-500"
-                        )}
+                        className={cn("text-[8px] font-bold leading-none", initialColors[o.status])}
                       >
                         {o.p.name.charAt(0).toUpperCase()}
                       </span>
@@ -272,65 +235,65 @@ export function AvailabilityCalendar({
         </div>
       ))}
 
-      {tooltip && <FloatingTooltip tooltip={tooltip} />}
+      {tooltip && (
+        <FloatingTooltip
+          date={tooltip.date}
+          rect={tooltip.rect}
+          myStatus={getMyCellStatus(tooltip.date)}
+          others={otherParticipants.map((p) => ({
+            name: p.name,
+            status: getOtherStatus(p.id, tooltip.date),
+          }))}
+        />
+      )}
     </div>
   );
 }
 
-function FloatingTooltip({ tooltip }: { tooltip: TooltipData }) {
-  const { date, rect, myStatus, others } = tooltip;
+function FloatingTooltip({
+  date, rect, myStatus, others,
+}: {
+  date: string; rect: DOMRect; myStatus: CellStatus;
+  others: { name: string; status: CellStatus }[];
+}) {
   const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
+  useEffect(() => { setMounted(true); }, []);
   if (!mounted) return null;
 
-  const tooltipWidth = 200;
-  let left = rect.left + rect.width / 2 - tooltipWidth / 2;
-  if (left < 8) left = 8;
-  if (left + tooltipWidth > window.innerWidth - 8) left = window.innerWidth - 8 - tooltipWidth;
-
-  const spaceBelow = window.innerHeight - rect.bottom;
-  const showAbove = spaceBelow < 120;
-  const top = showAbove ? rect.top - 8 : rect.bottom + 8;
+  const w = 180;
+  let left = rect.left + rect.width / 2 - w / 2;
+  if (left < 4) left = 4;
+  if (left + w > window.innerWidth - 4) left = window.innerWidth - 4 - w;
+  const showAbove = window.innerHeight - rect.bottom < 100;
+  const top = showAbove ? undefined : rect.bottom + 6;
+  const bottom = showAbove ? window.innerHeight - rect.top + 6 : undefined;
 
   const d = parseDate(date);
-  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  const label = `${dayNames[d.getDay()]}, ${monthNames[d.getMonth()]} ${d.getDate()}`;
+  const dayN = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const monN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
   return createPortal(
     <div
-      className={cn(
-        "fixed z-50 bg-popover border rounded-lg shadow-lg p-2.5 text-xs animate-in fade-in-0 zoom-in-95 duration-100",
-        showAbove ? "origin-bottom" : "origin-top"
-      )}
-      style={{
-        left,
-        top: showAbove ? undefined : top,
-        bottom: showAbove ? window.innerHeight - top : undefined,
-        width: tooltipWidth,
-      }}
+      className="fixed z-50 bg-popover border rounded-lg shadow-lg p-2 text-xs pointer-events-none animate-in fade-in-0 zoom-in-95 duration-75"
+      style={{ left, top, bottom, width: w }}
     >
-      <div className="font-medium text-sm mb-1.5">{label}</div>
-      <div className="space-y-1">
-        <div className="flex items-center gap-1.5">
-          <span className={cn("w-2 h-2 rounded-full flex-shrink-0", dotColors[myStatus])} />
-          <span className="font-medium">You</span>
-          <span className="text-muted-foreground ml-auto">{myStatus}</span>
-        </div>
-        {others.map((o) => (
-          <div key={o.name} className="flex items-center gap-1.5">
-            <span className={cn("w-2 h-2 rounded-full flex-shrink-0", dotColors[o.status])} />
-            <span>{o.name}</span>
-            <span className="text-muted-foreground ml-auto">{o.status}</span>
-          </div>
-        ))}
+      <div className="font-medium mb-1">{dayN[d.getDay()]}, {monN[d.getMonth()]} {d.getDate()}</div>
+      <div className="space-y-0.5">
+        <Row name="You" status={myStatus} bold />
+        {others.map((o) => <Row key={o.name} name={o.name} status={o.status} />)}
       </div>
     </div>,
     document.body
+  );
+}
+
+function Row({ name, status, bold }: { name: string; status: CellStatus; bold?: boolean }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", dotColors[status])} />
+      <span className={bold ? "font-medium" : ""}>{name}</span>
+      <span className="text-muted-foreground ml-auto">{statusLabels[status]}</span>
+    </div>
   );
 }
 
@@ -340,31 +303,23 @@ function groupByMonth(dates: string[]): { label: string; weeks: (string | null)[
     "July", "August", "September", "October", "November", "December",
   ];
   const grouped = new Map<string, string[]>();
-
   for (const date of dates) {
     const key = date.substring(0, 7);
     if (!grouped.has(key)) grouped.set(key, []);
     grouped.get(key)!.push(date);
   }
-
   return Array.from(grouped.entries()).map(([key, monthDates]) => {
     const [year, month] = key.split("-").map(Number);
     const label = `${monthNames[month - 1]} ${year}`;
-
     const firstDay = parseDate(monthDates[0]);
     let dayOfWeek = firstDay.getDay();
     dayOfWeek = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-
     const cells: (string | null)[] = [];
     for (let i = 0; i < dayOfWeek; i++) cells.push(null);
     for (const d of monthDates) cells.push(d);
     while (cells.length % 7 !== 0) cells.push(null);
-
     const weeks: (string | null)[][] = [];
-    for (let i = 0; i < cells.length; i += 7) {
-      weeks.push(cells.slice(i, i + 7));
-    }
-
+    for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
     return { label, weeks };
   });
 }

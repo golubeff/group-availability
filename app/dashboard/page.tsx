@@ -141,7 +141,7 @@ export default function DashboardPage() {
         (a: any) =>
           a.participantId === participant.id && a.retreatType === retreatType && a.date === date
       );
-      if (status === "available") {
+      if (status === "unavailable") {
         return idx >= 0 ? prev.filter((_: any, i: number) => i !== idx) : prev;
       }
       const entry = {
