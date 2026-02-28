@@ -209,16 +209,23 @@ export function AvailabilityCalendar({
       </div>
 
       {otherParticipants.length > 0 && (
-        <div className="flex gap-3 text-xs flex-wrap">
-          <span className="text-muted-foreground">Others:</span>
+        <div className="flex gap-3 text-xs flex-wrap items-center">
+          <span className="text-muted-foreground">Others on cells:</span>
           {otherParticipants.map((p, idx) => (
-            <div key={p.id} className="flex items-center gap-1">
-              <span className={cn("w-2.5 h-2.5 rounded-full", PERSON_COLORS[idx % PERSON_COLORS.length])} />
-              <span>{p.name}</span>
-            </div>
+            <span key={p.id} className="font-bold" style={{ color: getColorValue(idx) }}>
+              {p.name.charAt(0).toUpperCase()}
+            </span>
           ))}
+          <span className="text-muted-foreground">= {otherParticipants.map(p => p.name).join(", ")}</span>
         </div>
       )}
+
+      <div className="flex gap-3 text-[11px] text-muted-foreground flex-wrap">
+        <span>✓ = available</span>
+        <span>~ = if must</span>
+        <span>✗ = unavailable</span>
+        <span className="opacity-50">· = not set</span>
+      </div>
 
       <p className="text-xs text-muted-foreground">
         Tap to cycle status. On desktop, click and drag to paint multiple days.
@@ -278,25 +285,18 @@ export function AvailabilityCalendar({
                     </span>
                   )}
                   {otherParticipants.length > 0 && (
-                    <div className="absolute bottom-0.5 left-1/2 -translate-x-1/2 flex gap-[2px]">
+                    <div className="absolute bottom-0 left-1/2 -translate-x-1/2 flex gap-0 leading-none">
                       {otherParticipants.map((p, idx) => {
                         const s = getOther(p.id, cell);
-                        if (s === "not_set" || s === "unavailable") return null;
+                        const symbol = s === "available" ? "✓" : s === "inconvenient" ? "~" : s === "unavailable" ? "✗" : "·";
                         return (
                           <span
                             key={p.id}
-                            className={cn(
-                              "w-[5px] h-[5px] rounded-full",
-                              s === "available"
-                                ? PERSON_COLORS[idx % PERSON_COLORS.length]
-                                : "border border-current bg-transparent"
-                            )}
-                            style={
-                              s === "inconvenient"
-                                ? { borderColor: getColorValue(idx) }
-                                : undefined
-                            }
-                          />
+                            className="text-[7px] font-bold"
+                            style={{ color: getColorValue(idx) }}
+                          >
+                            {symbol}
+                          </span>
                         );
                       })}
                     </div>
