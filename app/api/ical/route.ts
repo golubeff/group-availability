@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
     }[] = [];
 
     for (const ev of events) {
-      const status = ev.allDay ? "unavailable" : "inconvenient";
+      const status = "unavailable";
       for (const retreatType of ["mini", "full"] as const) {
         icalAvailability.push({
           participantId,
