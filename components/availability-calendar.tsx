@@ -4,6 +4,7 @@ import { useRef, useCallback, useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { parseDate } from "@/lib/dates";
+import { Button } from "@/components/ui/button";
 import type { AvailabilityStatus, RetreatType, Participant } from "@/lib/types";
 
 interface AvailabilityEntry {
@@ -20,17 +21,18 @@ interface AvailabilityCalendarProps {
   allAvailability: AvailabilityEntry[];
   participants: Participant[];
   dates: string[];
-  onSetStatus: (date: string, status: AvailabilityStatus) => void;
+  onSetStatus: (date: string, status: string) => void;
   onPaintEnd?: () => void;
+  onReset?: () => void;
 }
 
-type CellStatus = AvailabilityStatus | "not_set";
+type CellStatus = "not_set" | "available" | "inconvenient" | "unavailable";
 
-const cellColors: Record<CellStatus, string> = {
-  not_set: "bg-white dark:bg-muted/30 border border-dashed border-border/50",
-  available: "bg-emerald-100 dark:bg-emerald-900/30",
-  inconvenient: "bg-amber-200 dark:bg-amber-900/40",
-  unavailable: "bg-red-200 dark:bg-red-900/50",
+const cellBg: Record<CellStatus, string> = {
+  not_set: "bg-white dark:bg-muted/20",
+  available: "bg-emerald-200 dark:bg-emerald-800/40",
+  inconvenient: "bg-amber-200 dark:bg-amber-800/40",
+  unavailable: "bg-red-200 dark:bg-red-800/40",
 };
 
 const statusLabels: Record<CellStatus, string> = {
@@ -40,29 +42,24 @@ const statusLabels: Record<CellStatus, string> = {
   unavailable: "Unavailable",
 };
 
-const dotColors: Record<CellStatus, string> = {
+const dotBg: Record<CellStatus, string> = {
   not_set: "bg-gray-300",
   available: "bg-emerald-500",
   inconvenient: "bg-amber-500",
   unavailable: "bg-red-500",
 };
 
-const initialColors: Record<CellStatus, string> = {
-  not_set: "text-gray-400",
-  available: "text-emerald-600",
-  inconvenient: "text-amber-600",
-  unavailable: "text-red-500",
-};
-
 const cycle: CellStatus[] = ["not_set", "available", "inconvenient", "unavailable"];
 
-function nextStatus(current: CellStatus): CellStatus {
+function nextInCycle(current: CellStatus): CellStatus {
   return cycle[(cycle.indexOf(current) + 1) % cycle.length];
 }
 
-function getEffective(status: CellStatus): AvailabilityStatus {
-  return status === "not_set" ? "unavailable" : status;
-}
+// Each participant gets a stable color for their dot overlay
+const PERSON_COLORS = [
+  "bg-blue-500", "bg-violet-500", "bg-pink-500", "bg-cyan-500",
+  "bg-lime-500", "bg-rose-500", "bg-teal-500", "bg-indigo-500",
+];
 
 export function AvailabilityCalendar({
   participant,
@@ -72,69 +69,80 @@ export function AvailabilityCalendar({
   dates,
   onSetStatus,
   onPaintEnd,
+  onReset,
 }: AvailabilityCalendarProps) {
   const myAvailability = allAvailability.filter(
     (a) => a.participantId === participant.id && a.retreatType === retreatType
   );
   const myStatusMap = new Map<string, CellStatus>(
-    myAvailability.map((a) => [a.date, a.status as AvailabilityStatus])
+    myAvailability.map((a) => [a.date, a.status as CellStatus])
   );
 
-  function getMyCellStatus(date: string): CellStatus {
+  function getMy(date: string): CellStatus {
     return myStatusMap.get(date) || "not_set";
   }
 
-  const paintStatusRef = useRef<CellStatus | null>(null);
+  const otherParticipants = participants.filter((p) => p.id !== participant.id);
+
+  function getOther(pId: number, date: string): CellStatus {
+    const e = allAvailability.find(
+      (a) => a.participantId === pId && a.retreatType === retreatType && a.date === date
+    );
+    return e ? (e.status as CellStatus) : "not_set";
+  }
+
+  // --- Painting state ---
+  const paintTargetRef = useRef<CellStatus | null>(null);
   const paintedRef = useRef<Set<string>>(new Set());
-  const [isPainting, setIsPainting] = useState(false);
+  const [, forceRender] = useState(0);
+  const isTouchRef = useRef(false);
+  const cellRefsMap = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  // Desktop hover tooltip
   const [tooltip, setTooltip] = useState<{ date: string; rect: DOMRect } | null>(null);
+
+  const applyPaint = useCallback(
+    (date: string) => {
+      if (paintTargetRef.current === null) return;
+      if (paintedRef.current.has(date)) return;
+      paintedRef.current.add(date);
+      const status = paintTargetRef.current;
+      onSetStatus(date, status);
+      forceRender((n) => n + 1);
+    },
+    [onSetStatus]
+  );
 
   const startPaint = useCallback(
     (date: string) => {
-      const current = getMyCellStatus(date);
-      const target = nextStatus(current);
-      paintStatusRef.current = target;
-      paintedRef.current = new Set([date]);
-      setIsPainting(true);
-      onSetStatus(date, getEffective(target));
+      const current = getMy(date);
+      const target = nextInCycle(current);
+      paintTargetRef.current = target;
+      paintedRef.current = new Set();
+      applyPaint(date);
     },
-    [myStatusMap, onSetStatus]
-  );
-
-  const continuePaint = useCallback(
-    (date: string) => {
-      if (!isPainting || paintStatusRef.current === null) return;
-      if (paintedRef.current.has(date)) return;
-      paintedRef.current.add(date);
-      onSetStatus(date, getEffective(paintStatusRef.current));
-    },
-    [isPainting, onSetStatus]
+    [myStatusMap, applyPaint]
   );
 
   const stopPaint = useCallback(() => {
-    if (paintStatusRef.current !== null) {
-      paintStatusRef.current = null;
+    if (paintTargetRef.current !== null) {
+      paintTargetRef.current = null;
       paintedRef.current = new Set();
-      setIsPainting(false);
       onPaintEnd?.();
     }
   }, [onPaintEnd]);
 
-  const otherParticipants = participants.filter((p) => p.id !== participant.id);
-
-  function getOtherStatus(pId: number, date: string): CellStatus {
-    const entry = allAvailability.find(
-      (a) => a.participantId === pId && a.retreatType === retreatType && a.date === date
-    );
-    return entry ? (entry.status as AvailabilityStatus) : "not_set";
-  }
-
-  const handleMouseEnter = useCallback(
-    (date: string, el: HTMLElement) => {
-      if (isPainting) return;
-      setTooltip({ date, rect: el.getBoundingClientRect() });
+  // Touch move: find cell under finger
+  const handleTouchMove = useCallback(
+    (e: React.TouchEvent) => {
+      if (paintTargetRef.current === null) return;
+      const touch = e.touches[0];
+      const el = document.elementFromPoint(touch.clientX, touch.clientY);
+      if (!el) return;
+      const date = (el as HTMLElement).dataset?.date || (el.parentElement as HTMLElement)?.dataset?.date;
+      if (date) applyPaint(date);
     },
-    [isPainting]
+    [applyPaint]
   );
 
   useEffect(() => {
@@ -145,6 +153,7 @@ export function AvailabilityCalendar({
   }, [tooltip]);
 
   const months = groupByMonth(dates);
+  const hasManual = myAvailability.some((a) => a.source === "manual");
 
   return (
     <div
@@ -153,81 +162,120 @@ export function AvailabilityCalendar({
       onMouseUp={stopPaint}
       onTouchEnd={stopPaint}
       onTouchCancel={stopPaint}
+      onTouchMove={handleTouchMove}
     >
-      <div className="flex gap-3 text-xs flex-wrap">
-        <div className="flex items-center gap-1">
-          <div className="w-4 h-4 rounded bg-white border border-dashed" />
-          <span>Not set</span>
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex gap-3 text-xs flex-wrap">
+          <div className="flex items-center gap-1">
+            <div className="w-4 h-4 rounded bg-white border" />
+            <span>Not set</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-4 h-4 rounded bg-emerald-200 border" />
+            <span>Available</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-4 h-4 rounded bg-amber-200 border" />
+            <span>If must</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-4 h-4 rounded bg-red-200 border" />
+            <span>Unavailable</span>
+          </div>
         </div>
-        <div className="flex items-center gap-1">
-          <div className="w-4 h-4 rounded bg-emerald-100 dark:bg-emerald-900/30 border" />
-          <span>Available</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <div className="w-4 h-4 rounded bg-amber-200 dark:bg-amber-900/40 border" />
-          <span>If must</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <div className="w-4 h-4 rounded bg-red-200 dark:bg-red-900/50 border" />
-          <span>Unavailable</span>
-        </div>
+        {hasManual && onReset && (
+          <Button variant="outline" size="sm" className="text-xs h-7" onClick={onReset}>
+            Reset all
+          </Button>
+        )}
       </div>
+
+      {otherParticipants.length > 0 && (
+        <div className="flex gap-3 text-xs flex-wrap">
+          <span className="text-muted-foreground">Others:</span>
+          {otherParticipants.map((p, idx) => (
+            <div key={p.id} className="flex items-center gap-1">
+              <span className={cn("w-2.5 h-2.5 rounded-full", PERSON_COLORS[idx % PERSON_COLORS.length])} />
+              <span>{p.name}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
       <p className="text-xs text-muted-foreground">
-        Tap to cycle: Not set → Available → If must → Unavailable. Drag to paint. Unset dates count as unavailable.
+        Tap to cycle status. Swipe to paint multiple days. Colored dots on cells show others&apos; availability (solid = available, ring = if must, hidden = not set/unavailable).
       </p>
 
       {months.map(({ label, weeks }) => (
         <div key={label}>
           <h3 className="text-sm font-semibold mb-2">{label}</h3>
-          <div className="grid grid-cols-7 gap-x-[2px] gap-y-0 text-center">
+          <div className="grid grid-cols-7 gap-[2px] text-center">
             {["M", "T", "W", "T", "F", "S", "S"].map((d, i) => (
               <div key={i} className="text-[10px] text-muted-foreground font-medium py-1">
                 {d}
               </div>
             ))}
             {weeks.flat().map((cell, i) => {
-              if (!cell) return <div key={`empty-${i}`} className="mb-1" />;
+              if (!cell) return <div key={`empty-${i}`} />;
 
-              const myStatus = getMyCellStatus(cell);
+              const myStatus = getMy(cell);
               const d = parseDate(cell);
               const isWeekend = d.getDay() === 0 || d.getDay() === 6;
 
-              const othersStatuses = otherParticipants.map((p) => ({
-                p,
-                status: getOtherStatus(p.id, cell),
-              }));
-
               return (
-                <div key={cell} className="mb-1 flex flex-col items-center">
-                  <div
-                    onPointerDown={(e) => {
-                      e.preventDefault();
-                      (e.target as HTMLElement).releasePointerCapture(e.pointerId);
-                      startPaint(cell);
-                    }}
-                    onPointerEnter={(e) => {
-                      continuePaint(cell);
-                      handleMouseEnter(cell, e.currentTarget);
-                    }}
-                    onPointerLeave={() => setTooltip(null)}
-                    className={cn(
-                      "relative w-full aspect-square flex items-center justify-center rounded text-[11px] font-medium select-none cursor-pointer min-h-[32px] transition-colors",
-                      cellColors[myStatus],
-                      isWeekend && "font-bold"
-                    )}
-                  >
-                    {d.getDate()}
-                  </div>
-                  <div className="flex justify-center gap-[1px] min-h-[12px] mt-[1px]">
-                    {othersStatuses.map((o) => (
-                      <span
-                        key={o.p.id}
-                        className={cn("text-[8px] font-bold leading-none", initialColors[o.status])}
-                      >
-                        {o.p.name.charAt(0).toUpperCase()}
-                      </span>
-                    ))}
-                  </div>
+                <div
+                  key={cell}
+                  data-date={cell}
+                  ref={(el) => { if (el) cellRefsMap.current.set(cell, el); }}
+                  onPointerDown={(e) => {
+                    isTouchRef.current = e.pointerType === "touch";
+                    e.preventDefault();
+                    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+                    startPaint(cell);
+                  }}
+                  onPointerEnter={(e) => {
+                    if (paintTargetRef.current !== null) {
+                      applyPaint(cell);
+                    } else if (e.pointerType === "mouse") {
+                      setTooltip({ date: cell, rect: e.currentTarget.getBoundingClientRect() });
+                    }
+                  }}
+                  onPointerLeave={() => {
+                    if (!isTouchRef.current) setTooltip(null);
+                  }}
+                  className={cn(
+                    "relative aspect-square flex items-center justify-center rounded text-[11px] font-medium select-none cursor-pointer min-h-[32px] transition-colors touch-none",
+                    cellBg[myStatus],
+                    myStatus === "not_set" && "border border-dashed border-border/40",
+                    isWeekend && "font-bold"
+                  )}
+                >
+                  {d.getDate()}
+                  {/* Other people's dots */}
+                  {otherParticipants.length > 0 && (
+                    <div className="absolute bottom-0.5 left-1/2 -translate-x-1/2 flex gap-[2px]">
+                      {otherParticipants.map((p, idx) => {
+                        const s = getOther(p.id, cell);
+                        if (s === "not_set" || s === "unavailable") return null;
+                        return (
+                          <span
+                            key={p.id}
+                            className={cn(
+                              "w-[5px] h-[5px] rounded-full",
+                              s === "available"
+                                ? PERSON_COLORS[idx % PERSON_COLORS.length]
+                                : "border border-current bg-transparent"
+                            )}
+                            style={
+                              s === "inconvenient"
+                                ? { borderColor: getColorValue(idx) }
+                                : undefined
+                            }
+                          />
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -235,14 +283,14 @@ export function AvailabilityCalendar({
         </div>
       ))}
 
-      {tooltip && (
-        <FloatingTooltip
+      {tooltip && !isTouchRef.current && (
+        <Tooltip
           date={tooltip.date}
           rect={tooltip.rect}
-          myStatus={getMyCellStatus(tooltip.date)}
+          myStatus={getMy(tooltip.date)}
           others={otherParticipants.map((p) => ({
             name: p.name,
-            status: getOtherStatus(p.id, tooltip.date),
+            status: getOther(p.id, tooltip.date),
           }))}
         />
       )}
@@ -250,7 +298,15 @@ export function AvailabilityCalendar({
   );
 }
 
-function FloatingTooltip({
+function getColorValue(idx: number): string {
+  const colors = [
+    "#3b82f6", "#8b5cf6", "#ec4899", "#06b6d4",
+    "#84cc16", "#f43f5e", "#14b8a6", "#6366f1",
+  ];
+  return colors[idx % colors.length];
+}
+
+function Tooltip({
   date, rect, myStatus, others,
 }: {
   date: string; rect: DOMRect; myStatus: CellStatus;
@@ -265,8 +321,6 @@ function FloatingTooltip({
   if (left < 4) left = 4;
   if (left + w > window.innerWidth - 4) left = window.innerWidth - 4 - w;
   const showAbove = window.innerHeight - rect.bottom < 100;
-  const top = showAbove ? undefined : rect.bottom + 6;
-  const bottom = showAbove ? window.innerHeight - rect.top + 6 : undefined;
 
   const d = parseDate(date);
   const dayN = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -275,25 +329,31 @@ function FloatingTooltip({
   return createPortal(
     <div
       className="fixed z-50 bg-popover border rounded-lg shadow-lg p-2 text-xs pointer-events-none animate-in fade-in-0 zoom-in-95 duration-75"
-      style={{ left, top, bottom, width: w }}
+      style={{
+        left,
+        width: w,
+        ...(showAbove
+          ? { bottom: window.innerHeight - rect.top + 6 }
+          : { top: rect.bottom + 6 }),
+      }}
     >
       <div className="font-medium mb-1">{dayN[d.getDay()]}, {monN[d.getMonth()]} {d.getDate()}</div>
       <div className="space-y-0.5">
-        <Row name="You" status={myStatus} bold />
-        {others.map((o) => <Row key={o.name} name={o.name} status={o.status} />)}
+        <div className="flex items-center gap-1.5">
+          <span className={cn("w-1.5 h-1.5 rounded-full", dotBg[myStatus])} />
+          <span className="font-medium">You</span>
+          <span className="text-muted-foreground ml-auto">{statusLabels[myStatus]}</span>
+        </div>
+        {others.map((o) => (
+          <div key={o.name} className="flex items-center gap-1.5">
+            <span className={cn("w-1.5 h-1.5 rounded-full", dotBg[o.status])} />
+            <span>{o.name}</span>
+            <span className="text-muted-foreground ml-auto">{statusLabels[o.status]}</span>
+          </div>
+        ))}
       </div>
     </div>,
     document.body
-  );
-}
-
-function Row({ name, status, bold }: { name: string; status: CellStatus; bold?: boolean }) {
-  return (
-    <div className="flex items-center gap-1.5">
-      <span className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", dotColors[status])} />
-      <span className={bold ? "font-medium" : ""}>{name}</span>
-      <span className="text-muted-foreground ml-auto">{statusLabels[status]}</span>
-    </div>
   );
 }
 

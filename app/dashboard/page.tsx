@@ -141,7 +141,8 @@ export default function DashboardPage() {
         (a: any) =>
           a.participantId === participant.id && a.retreatType === retreatType && a.date === date
       );
-      if (status === "unavailable") {
+      // "not_set" = remove entry (back to default)
+      if (status === "not_set") {
         return idx >= 0 ? prev.filter((_: any, i: number) => i !== idx) : prev;
       }
       const entry = {
@@ -164,6 +165,23 @@ export default function DashboardPage() {
         status,
       }),
     });
+  };
+
+  const handleResetAvailability = async (retreatType: RetreatType) => {
+    if (!participant) return;
+    const setter = retreatType === "mini" ? setMiniAvailability : setFullAvailability;
+    setter((prev: any[]) =>
+      prev.filter(
+        (a: any) =>
+          !(a.participantId === participant.id && a.retreatType === retreatType && a.source === "manual")
+      )
+    );
+    await fetch("/api/availability", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ participantId: participant.id, retreatType }),
+    });
+    fetchAll();
   };
 
   const debouncedFetchRef = useRef<NodeJS.Timeout | null>(null);
@@ -360,6 +378,7 @@ export default function DashboardPage() {
                   dates={miniDates}
                   onSetStatus={(date, status) => handleAvailabilitySet("mini", date, status)}
                   onPaintEnd={scheduleRefresh}
+                  onReset={() => handleResetAvailability("mini")}
                 />
               </div>
               <div>
@@ -406,6 +425,7 @@ export default function DashboardPage() {
                   dates={fullDates}
                   onSetStatus={(date, status) => handleAvailabilitySet("full", date, status)}
                   onPaintEnd={scheduleRefresh}
+                  onReset={() => handleResetAvailability("full")}
                 />
               </div>
               <div>
