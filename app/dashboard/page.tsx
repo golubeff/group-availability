@@ -202,6 +202,14 @@ export default function DashboardPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ participantId: participant.id, retreatType }),
       });
+      // Re-sync iCal to restore calendar-imported entries that were overwritten by manual edits
+      if (participant.icalUrl) {
+        await fetch("/api/ical", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ participantId: participant.id, icalUrl: participant.icalUrl }),
+        });
+      }
       await fetchAll();
     });
   };
