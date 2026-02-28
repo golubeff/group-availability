@@ -21,6 +21,7 @@ import type { Participant, Vote, RetreatType, RetreatProposal } from "@/lib/type
 export default function DashboardPage() {
   const [participant, setParticipant] = useState<Participant | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [monthlyVotes, setMonthlyVotes] = useState<any[]>([]);
   const [miniAvailability, setMiniAvailability] = useState<any[]>([]);
   const [fullAvailability, setFullAvailability] = useState<any[]>([]);
@@ -87,13 +88,39 @@ export default function DashboardPage() {
   const pendingOpsRef = useRef<(() => Promise<void>)[]>([]);
   const flushTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  const retryOp = useCallback(async (op: () => Promise<void>, attempts = 3): Promise<void> => {
+    for (let i = 0; i < attempts; i++) {
+      try {
+        await op();
+        return;
+      } catch (e) {
+        if (i === attempts - 1) throw e;
+        await new Promise((r) => setTimeout(r, 1000 * (i + 1)));
+      }
+    }
+  }, []);
+
   const flushPending = useCallback(async () => {
     const ops = pendingOpsRef.current;
     pendingOpsRef.current = [];
+    if (ops.length === 0) return;
+
+    let hadError = false;
     for (const op of ops) {
-      try { await op(); } catch (e) { console.error("Save failed", e); }
+      try {
+        await retryOp(op);
+      } catch (e) {
+        console.error("Save failed after retries", e);
+        hadError = true;
+      }
     }
-    if (ops.length > 0) {
+
+    if (hadError) {
+      setSaveError("Some changes failed to save. Reloading data...");
+      await fetchAll();
+      setTimeout(() => setSaveError(null), 4000);
+    } else {
+      setSaveError(null);
       fetchAll();
       fetch("/api/backup", {
         method: "POST",
@@ -101,7 +128,7 @@ export default function DashboardPage() {
         body: JSON.stringify({}),
       }).catch(() => {});
     }
-  }, [fetchAll]);
+  }, [fetchAll, retryOp]);
 
   const enqueueSave = useCallback((fn: () => Promise<void>) => {
     pendingOpsRef.current.push(fn);
@@ -555,6 +582,17 @@ export default function DashboardPage() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {saveError && (
+        <div className="fixed bottom-4 left-4 right-4 z-50 max-w-md mx-auto">
+          <div className="bg-red-600 text-white text-sm px-4 py-3 rounded-lg shadow-lg flex items-center gap-2">
+            <span className="flex-1">{saveError}</span>
+            <button onClick={() => setSaveError(null)} className="text-white/80 hover:text-white text-xs">
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
