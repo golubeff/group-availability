@@ -67,17 +67,6 @@ export default function DashboardPage() {
       const fullData = await fullRRes.json();
       setFullProposals(fullData.proposals || []);
       setFullVotes(fullData.votes || []);
-
-      // Refresh participant data (for icalLastSynced)
-      const stored = localStorage.getItem("participant");
-      if (stored) {
-        const current = JSON.parse(stored);
-        const fresh = participantsData.find((p: Participant) => p.id === current.id);
-        if (fresh) {
-          setParticipant(fresh);
-          localStorage.setItem("participant", JSON.stringify(fresh));
-        }
-      }
     } catch (e) {
       console.error("Failed to fetch data", e);
     } finally {
@@ -160,12 +149,13 @@ export default function DashboardPage() {
     }
   }, [participant]);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (participant) {
       fetchAll();
       fetchIcalEvents();
     }
-  }, [participant, fetchAll, fetchIcalEvents]);
+  }, [participant?.id]);
 
   const handleMonthlyVote = async (fridayDate: string, vote: Vote | null) => {
     if (!participant) return;

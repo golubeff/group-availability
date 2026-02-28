@@ -72,46 +72,16 @@ export function AvailabilityCalendar({
   onSetStatus,
   onReset,
 }: AvailabilityCalendarProps) {
-  // Local overrides: tracks user changes that haven't been confirmed by server yet
-  const [localOverrides, setLocalOverrides] = useState<Map<string, CellStatus>>(new Map());
-
   const myAvailability = allAvailability.filter(
     (a) => a.participantId === participant.id && a.retreatType === retreatType
   );
-  const serverStatusMap = new Map<string, CellStatus>(
+  const myStatusMap = new Map<string, CellStatus>(
     myAvailability.map((a) => [a.date, a.status as CellStatus])
   );
 
-  // Effective status: local override wins over server data
   function getMy(date: string): CellStatus {
-    if (localOverrides.has(date)) return localOverrides.get(date)!;
-    return serverStatusMap.get(date) || "not_set";
+    return myStatusMap.get(date) || "not_set";
   }
-
-  // Clear overrides that match server data (server caught up)
-  useEffect(() => {
-    if (localOverrides.size === 0) return;
-    setLocalOverrides((prev) => {
-      const next = new Map(prev);
-      let changed = false;
-      for (const [date, status] of prev) {
-        const serverStatus = serverStatusMap.get(date) || "not_set";
-        if (serverStatus === status) {
-          next.delete(date);
-          changed = true;
-        }
-      }
-      return changed ? next : prev;
-    });
-  }, [allAvailability]);
-
-  const applyStatus = useCallback(
-    (date: string, status: CellStatus) => {
-      setLocalOverrides((prev) => new Map(prev).set(date, status));
-      onSetStatus(date, status);
-    },
-    [onSetStatus]
-  );
 
   const otherParticipants = participants.filter((p) => p.id !== participant.id);
 
@@ -136,9 +106,9 @@ export function AvailabilityCalendar({
       mouseDownRef.current = true;
       paintTargetRef.current = target;
       paintedRef.current = new Set([date]);
-      applyStatus(date, target);
+      onSetStatus(date, target);
     },
-    [localOverrides, serverStatusMap, applyStatus]
+    [myStatusMap, onSetStatus]
   );
 
   const continueDragPaint = useCallback(
@@ -146,9 +116,9 @@ export function AvailabilityCalendar({
       if (!mouseDownRef.current || paintTargetRef.current === null) return;
       if (paintedRef.current.has(date)) return;
       paintedRef.current.add(date);
-      applyStatus(date, paintTargetRef.current);
+      onSetStatus(date, paintTargetRef.current);
     },
-    [applyStatus]
+    [onSetStatus]
   );
 
   const stopDragPaint = useCallback(() => {
@@ -160,9 +130,9 @@ export function AvailabilityCalendar({
   const handleTap = useCallback(
     (date: string) => {
       const target = nextInCycle(getMy(date));
-      applyStatus(date, target);
+      onSetStatus(date, target);
     },
-    [localOverrides, serverStatusMap, applyStatus]
+    [myStatusMap, onSetStatus]
   );
 
   useEffect(() => {
@@ -181,12 +151,7 @@ export function AvailabilityCalendar({
   }, [tooltip]);
 
   const months = groupByMonth(dates);
-  const hasManual = myAvailability.some((a) => a.source === "manual") || localOverrides.size > 0;
-
-  const handleReset = useCallback(() => {
-    setLocalOverrides(new Map());
-    onReset?.();
-  }, [onReset]);
+  const hasManual = myAvailability.some((a) => a.source === "manual");
 
   return (
     <div className="space-y-4" onMouseLeave={() => { stopDragPaint(); setTooltip(null); }}>
@@ -210,7 +175,7 @@ export function AvailabilityCalendar({
           </div>
         </div>
         {hasManual && onReset && (
-          <Button variant="outline" size="sm" className="text-xs h-7" onClick={handleReset}>
+          <Button variant="outline" size="sm" className="text-xs h-7" onClick={onReset}>
             Reset all
           </Button>
         )}
