@@ -49,17 +49,24 @@ const dotBg: Record<CellStatus, string> = {
   unavailable: "bg-red-500",
 };
 
-const cycle: CellStatus[] = ["not_set", "available", "inconvenient", "unavailable"];
+const statusCycle: CellStatus[] = ["not_set", "available", "inconvenient", "unavailable"];
 
 function nextInCycle(current: CellStatus): CellStatus {
-  return cycle[(cycle.indexOf(current) + 1) % cycle.length];
+  return statusCycle[(statusCycle.indexOf(current) + 1) % statusCycle.length];
 }
 
-// Each participant gets a stable color for their dot overlay
 const PERSON_COLORS = [
   "bg-blue-500", "bg-violet-500", "bg-pink-500", "bg-cyan-500",
   "bg-lime-500", "bg-rose-500", "bg-teal-500", "bg-indigo-500",
 ];
+
+function getColorValue(idx: number): string {
+  const colors = [
+    "#3b82f6", "#8b5cf6", "#ec4899", "#06b6d4",
+    "#84cc16", "#f43f5e", "#14b8a6", "#6366f1",
+  ];
+  return colors[idx % colors.length];
+}
 
 export function AvailabilityCalendar({
   participant,
@@ -91,59 +98,62 @@ export function AvailabilityCalendar({
     return e ? (e.status as CellStatus) : "not_set";
   }
 
-  // --- Painting state ---
+  // --- Desktop mouse drag-to-paint ---
+  const mouseDownRef = useRef(false);
   const paintTargetRef = useRef<CellStatus | null>(null);
   const paintedRef = useRef<Set<string>>(new Set());
   const [, forceRender] = useState(0);
-  const isTouchRef = useRef(false);
-  const cellRefsMap = useRef<Map<string, HTMLDivElement>>(new Map());
 
-  // Desktop hover tooltip
-  const [tooltip, setTooltip] = useState<{ date: string; rect: DOMRect } | null>(null);
-
-  const applyPaint = useCallback(
-    (date: string) => {
-      if (paintTargetRef.current === null) return;
+  const paintCell = useCallback(
+    (date: string, targetStatus: CellStatus) => {
       if (paintedRef.current.has(date)) return;
       paintedRef.current.add(date);
-      const status = paintTargetRef.current;
-      onSetStatus(date, status);
+      onSetStatus(date, targetStatus);
       forceRender((n) => n + 1);
     },
     [onSetStatus]
   );
 
-  const startPaint = useCallback(
+  const handleMouseDown = useCallback(
     (date: string) => {
-      const current = getMy(date);
-      const target = nextInCycle(current);
+      const target = nextInCycle(getMy(date));
+      mouseDownRef.current = true;
       paintTargetRef.current = target;
       paintedRef.current = new Set();
-      applyPaint(date);
+      paintCell(date, target);
     },
-    [myStatusMap, applyPaint]
+    [myStatusMap, paintCell]
   );
 
-  const stopPaint = useCallback(() => {
-    if (paintTargetRef.current !== null) {
+  const handleMouseEnterCell = useCallback(
+    (date: string) => {
+      if (mouseDownRef.current && paintTargetRef.current !== null) {
+        paintCell(date, paintTargetRef.current);
+      }
+    },
+    [paintCell]
+  );
+
+  const handleMouseUp = useCallback(() => {
+    if (mouseDownRef.current) {
+      mouseDownRef.current = false;
       paintTargetRef.current = null;
       paintedRef.current = new Set();
       onPaintEnd?.();
     }
   }, [onPaintEnd]);
 
-  // Touch move: find cell under finger
-  const handleTouchMove = useCallback(
-    (e: React.TouchEvent) => {
-      if (paintTargetRef.current === null) return;
-      const touch = e.touches[0];
-      const el = document.elementFromPoint(touch.clientX, touch.clientY);
-      if (!el) return;
-      const date = (el as HTMLElement).dataset?.date || (el.parentElement as HTMLElement)?.dataset?.date;
-      if (date) applyPaint(date);
+  // --- Mobile: simple tap (click) ---
+  const handleClick = useCallback(
+    (date: string) => {
+      const target = nextInCycle(getMy(date));
+      onSetStatus(date, target);
     },
-    [applyPaint]
+    [myStatusMap, onSetStatus]
   );
+
+  // --- Desktop hover tooltip ---
+  const [tooltip, setTooltip] = useState<{ date: string; rect: DOMRect } | null>(null);
 
   useEffect(() => {
     if (!tooltip) return;
@@ -152,18 +162,16 @@ export function AvailabilityCalendar({
     return () => window.removeEventListener("scroll", dismiss, true);
   }, [tooltip]);
 
+  useEffect(() => {
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => window.removeEventListener("mouseup", handleMouseUp);
+  }, [handleMouseUp]);
+
   const months = groupByMonth(dates);
   const hasManual = myAvailability.some((a) => a.source === "manual");
 
   return (
-    <div
-      className="space-y-4"
-      onMouseLeave={() => { stopPaint(); setTooltip(null); }}
-      onMouseUp={stopPaint}
-      onTouchEnd={stopPaint}
-      onTouchCancel={stopPaint}
-      onTouchMove={handleTouchMove}
-    >
+    <div className="space-y-4" onMouseLeave={() => setTooltip(null)}>
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex gap-3 text-xs flex-wrap">
           <div className="flex items-center gap-1">
@@ -203,7 +211,7 @@ export function AvailabilityCalendar({
       )}
 
       <p className="text-xs text-muted-foreground">
-        Tap to cycle status. Swipe to paint multiple days. Colored dots on cells show others&apos; availability (solid = available, ring = if must, hidden = not set/unavailable).
+        Tap to cycle status. On desktop, click and drag to paint multiple days.
       </p>
 
       {months.map(({ label, weeks }) => (
@@ -226,32 +234,34 @@ export function AvailabilityCalendar({
                 <div
                   key={cell}
                   data-date={cell}
-                  ref={(el) => { if (el) cellRefsMap.current.set(cell, el); }}
-                  onPointerDown={(e) => {
-                    isTouchRef.current = e.pointerType === "touch";
+                  onMouseDown={(e) => {
                     e.preventDefault();
-                    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
-                    startPaint(cell);
+                    handleMouseDown(cell);
                   }}
-                  onPointerEnter={(e) => {
-                    if (paintTargetRef.current !== null) {
-                      applyPaint(cell);
-                    } else if (e.pointerType === "mouse") {
+                  onMouseEnter={(e) => {
+                    handleMouseEnterCell(cell);
+                    if (!mouseDownRef.current) {
                       setTooltip({ date: cell, rect: e.currentTarget.getBoundingClientRect() });
                     }
                   }}
-                  onPointerLeave={() => {
-                    if (!isTouchRef.current) setTooltip(null);
+                  onMouseLeave={() => setTooltip(null)}
+                  onClick={(e) => {
+                    // Only handle clicks from touch — mouse clicks are handled by mouseDown
+                    if (e.detail === 0) handleClick(cell);
+                  }}
+                  onTouchEnd={(e) => {
+                    // Tap on mobile: cycle status
+                    e.preventDefault();
+                    handleClick(cell);
                   }}
                   className={cn(
-                    "relative aspect-square flex items-center justify-center rounded text-[11px] font-medium select-none cursor-pointer min-h-[32px] transition-colors touch-none",
+                    "relative aspect-square flex items-center justify-center rounded text-[11px] font-medium select-none cursor-pointer min-h-[32px] transition-colors",
                     cellBg[myStatus],
                     myStatus === "not_set" && "border border-dashed border-border/40",
                     isWeekend && "font-bold"
                   )}
                 >
                   {d.getDate()}
-                  {/* Other people's dots */}
                   {otherParticipants.length > 0 && (
                     <div className="absolute bottom-0.5 left-1/2 -translate-x-1/2 flex gap-[2px]">
                       {otherParticipants.map((p, idx) => {
@@ -283,7 +293,7 @@ export function AvailabilityCalendar({
         </div>
       ))}
 
-      {tooltip && !isTouchRef.current && (
+      {tooltip && (
         <Tooltip
           date={tooltip.date}
           rect={tooltip.rect}
@@ -296,14 +306,6 @@ export function AvailabilityCalendar({
       )}
     </div>
   );
-}
-
-function getColorValue(idx: number): string {
-  const colors = [
-    "#3b82f6", "#8b5cf6", "#ec4899", "#06b6d4",
-    "#84cc16", "#f43f5e", "#14b8a6", "#6366f1",
-  ];
-  return colors[idx % colors.length];
 }
 
 function Tooltip({
