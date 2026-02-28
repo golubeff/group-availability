@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useCallback, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -42,14 +43,59 @@ export function FridayGrid({
   retreatMonths,
   onReset,
 }: FridayGridProps) {
+  // Local overrides for instant UI feedback
+  const [localVotes, setLocalVotes] = useState<Map<string, Vote | null>>(new Map());
+
+  // Clear overrides when server data catches up
+  useEffect(() => {
+    if (localVotes.size === 0) return;
+    setLocalVotes((prev) => {
+      const next = new Map(prev);
+      let changed = false;
+      for (const [date, vote] of prev) {
+        const serverVote = allVotes.find(
+          (v) => v.participantId === participant.id && v.fridayDate === date
+        );
+        const serverVal = serverVote ? serverVote.vote : null;
+        if (serverVal === vote) {
+          next.delete(date);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [allVotes]);
+
+  const handleVote = useCallback(
+    (fridayDate: string, vote: Vote | null) => {
+      setLocalVotes((prev) => new Map(prev).set(fridayDate, vote));
+      onVote(fridayDate, vote);
+    },
+    [onVote]
+  );
+
+  function getMyVote(fridayDate: string): Vote | null {
+    if (localVotes.has(fridayDate)) return localVotes.get(fridayDate)!;
+    const v = allVotes.find(
+      (v) => v.participantId === participant.id && v.fridayDate === fridayDate
+    );
+    return v ? (v.vote as Vote) : null;
+  }
+
   const months = getAllFridaysPerMonth();
-  const hasMyVotes = allVotes.some((v) => v.participantId === participant.id);
+  const hasMyVotes =
+    allVotes.some((v) => v.participantId === participant.id) || localVotes.size > 0;
+
+  const handleReset = useCallback(() => {
+    setLocalVotes(new Map());
+    onReset?.();
+  }, [onReset]);
 
   return (
     <div className="space-y-4">
       {hasMyVotes && onReset && (
         <div className="flex justify-end">
-          <Button variant="outline" size="sm" className="text-xs h-7" onClick={onReset}>
+          <Button variant="outline" size="sm" className="text-xs h-7" onClick={handleReset}>
             Reset all
           </Button>
         </div>
@@ -60,7 +106,7 @@ export function FridayGrid({
 
         const fridayScores = monthData.fridays.map((friday) => {
           const fridayVotes = allVotes.filter((v) => v.fridayDate === friday);
-          const myVote = fridayVotes.find((v) => v.participantId === participant.id);
+          const myVote = getMyVote(friday);
           const { score, noCount } = scoreVotes(fridayVotes.map((v) => v.vote as Vote));
           const conflict = checkFridayIcalConflict(icalEvents, friday);
           return { date: friday, votes: fridayVotes, myVote, score, noCount, conflict };
@@ -120,8 +166,8 @@ export function FridayGrid({
                       />
                     </div>
                     <VoteButton
-                      currentVote={(friday.myVote?.vote as Vote) || null}
-                      onVote={(v) => onVote(friday.date, v)}
+                      currentVote={friday.myVote}
+                      onVote={(v) => handleVote(friday.date, v)}
                       size="sm"
                     />
                   </div>
