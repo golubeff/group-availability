@@ -22,6 +22,8 @@ export default function DashboardPage() {
   const [participant, setParticipant] = useState<Participant | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [hasPending, setHasPending] = useState(false);
   const [monthlyVotes, setMonthlyVotes] = useState<any[]>([]);
   const [miniAvailability, setMiniAvailability] = useState<any[]>([]);
   const [fullAvailability, setFullAvailability] = useState<any[]>([]);
@@ -94,6 +96,8 @@ export default function DashboardPage() {
     pendingOpsRef.current = [];
     if (ops.length === 0) return;
 
+    setIsSyncing(true);
+    setHasPending(false);
     let hadError = false;
     for (const op of ops) {
       try {
@@ -117,10 +121,12 @@ export default function DashboardPage() {
         body: JSON.stringify({}),
       }).catch(() => {});
     }
+    setIsSyncing(false);
   }, [fetchAll, retryOp]);
 
   const enqueueSave = useCallback((fn: () => Promise<void>) => {
     pendingOpsRef.current.push(fn);
+    setHasPending(true);
     if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
     flushTimerRef.current = setTimeout(() => {
       flushTimerRef.current = null;
@@ -566,6 +572,24 @@ export default function DashboardPage() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {(hasPending || isSyncing) && !saveError && (
+        <div className="fixed bottom-4 right-4 z-50">
+          <div className="bg-foreground/80 text-background text-xs px-3 py-2 rounded-full shadow-lg flex items-center gap-2">
+            {isSyncing ? (
+              <>
+                <span className="w-3 h-3 border-2 border-background border-t-transparent rounded-full animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                Unsaved changes
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {saveError && (
         <div className="fixed bottom-4 left-4 right-4 z-50 max-w-md mx-auto">
