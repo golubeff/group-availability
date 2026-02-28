@@ -21,16 +21,6 @@ import type { Participant, Vote, RetreatType, RetreatProposal } from "@/lib/type
 export default function DashboardPage() {
   const [participant, setParticipant] = useState<Participant | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
-  const tracked = useCallback(async (fn: () => Promise<void>) => {
-    try {
-      await fn();
-      fetch("/api/backup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      }).catch(() => {});
-    } catch (e) { console.error("Save failed", e); }
-  }, []);
   const [monthlyVotes, setMonthlyVotes] = useState<any[]>([]);
   const [miniAvailability, setMiniAvailability] = useState<any[]>([]);
   const [fullAvailability, setFullAvailability] = useState<any[]>([]);
@@ -94,6 +84,45 @@ export default function DashboardPage() {
     }
   }, []);
 
+  const pendingOpsRef = useRef<(() => Promise<void>)[]>([]);
+  const flushTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const flushPending = useCallback(async () => {
+    const ops = pendingOpsRef.current;
+    pendingOpsRef.current = [];
+    for (const op of ops) {
+      try { await op(); } catch (e) { console.error("Save failed", e); }
+    }
+    if (ops.length > 0) {
+      fetchAll();
+      fetch("/api/backup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      }).catch(() => {});
+    }
+  }, [fetchAll]);
+
+  const enqueueSave = useCallback((fn: () => Promise<void>) => {
+    pendingOpsRef.current.push(fn);
+    if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
+    flushTimerRef.current = setTimeout(() => {
+      flushTimerRef.current = null;
+      flushPending();
+    }, 2000);
+  }, [flushPending]);
+
+  const tracked = useCallback(async (fn: () => Promise<void>) => {
+    try {
+      await fn();
+      fetch("/api/backup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      }).catch(() => {});
+    } catch (e) { console.error("Save failed", e); }
+  }, []);
+
   const fetchIcalEvents = useCallback(async () => {
     if (!participant) return;
     try {
@@ -113,30 +142,41 @@ export default function DashboardPage() {
 
   const handleMonthlyVote = async (fridayDate: string, vote: Vote | null) => {
     if (!participant) return;
-    tracked(async () => {
+
+    // Optimistic UI update
+    setMonthlyVotes((prev: any[]) => {
+      const idx = prev.findIndex(
+        (v: any) => v.participantId === participant.id && v.fridayDate === fridayDate
+      );
       if (vote === null) {
+        return idx >= 0 ? prev.filter((_: any, i: number) => i !== idx) : prev;
+      }
+      const entry = { participantId: participant.id, fridayDate, vote };
+      return idx >= 0 ? prev.map((v: any, i: number) => (i === idx ? entry : v)) : [...prev, entry];
+    });
+
+    // Debounced save
+    const voteToSend = vote;
+    const pid = participant.id;
+    enqueueSave(async () => {
+      if (voteToSend === null) {
         const existing = monthlyVotes.find(
-          (v: any) => v.participantId === participant.id && v.fridayDate === fridayDate
+          (v: any) => v.participantId === pid && v.fridayDate === fridayDate
         );
         if (existing) {
           await fetch("/api/monthly", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              participantId: participant.id,
-              fridayDate,
-              vote: existing.vote,
-            }),
+            body: JSON.stringify({ participantId: pid, fridayDate, vote: existing.vote }),
           });
         }
       } else {
         await fetch("/api/monthly", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ participantId: participant.id, fridayDate, vote }),
+          body: JSON.stringify({ participantId: pid, fridayDate, vote: voteToSend }),
         });
       }
-      await fetchAll();
     });
   };
 
@@ -180,16 +220,12 @@ export default function DashboardPage() {
       return idx >= 0 ? prev.map((a: any, i: number) => (i === idx ? entry : a)) : [...prev, entry];
     });
 
-    tracked(async () => {
+    const pid = participant.id;
+    enqueueSave(async () => {
       await fetch("/api/availability", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          participantId: participant.id,
-          retreatType,
-          date,
-          status,
-        }),
+        body: JSON.stringify({ participantId: pid, retreatType, date, status }),
       });
     });
   };
@@ -234,36 +270,42 @@ export default function DashboardPage() {
     vote: Vote | null
   ) => {
     if (!participant) return;
-    tracked(async () => {
+
+    // Optimistic UI
+    const setter = retreatType === "mini" ? setMiniVotes : setFullVotes;
+    setter((prev: any[]) => {
+      const idx = prev.findIndex(
+        (v: any) => v.participantId === participant.id && v.retreatType === retreatType && v.startDate === startDate
+      );
       if (vote === null) {
+        return idx >= 0 ? prev.filter((_: any, i: number) => i !== idx) : prev;
+      }
+      const entry = { participantId: participant.id, retreatType, startDate, endDate, vote };
+      return idx >= 0 ? prev.map((v: any, i: number) => (i === idx ? entry : v)) : [...prev, entry];
+    });
+
+    const pid = participant.id;
+    const voteToSend = vote;
+    enqueueSave(async () => {
+      if (voteToSend === null) {
         const allV = retreatType === "mini" ? miniVotes : fullVotes;
         const existing = allV.find(
-          (v: any) =>
-            v.participantId === participant.id &&
-            v.retreatType === retreatType &&
-            v.startDate === startDate
+          (v: any) => v.participantId === pid && v.retreatType === retreatType && v.startDate === startDate
         );
         if (existing) {
           await fetch("/api/retreat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              participantId: participant.id,
-              retreatType,
-              startDate,
-              endDate,
-              vote: existing.vote,
-            }),
+            body: JSON.stringify({ participantId: pid, retreatType, startDate, endDate, vote: existing.vote }),
           });
         }
       } else {
         await fetch("/api/retreat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ participantId: participant.id, retreatType, startDate, endDate, vote }),
+          body: JSON.stringify({ participantId: pid, retreatType, startDate, endDate, vote: voteToSend }),
         });
       }
-      await fetchAll();
     });
   };
 

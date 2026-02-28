@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { cn } from "@/lib/utils";
 import type { Vote } from "@/lib/types";
 
@@ -19,14 +18,10 @@ interface VoteButtonProps {
 }
 
 export function VoteButton({ currentVote, onVote, size = "md" }: VoteButtonProps) {
-  const [saving, setSaving] = useState(false);
-
-  const handleClick = async () => {
+  const handleClick = () => {
     const currentIdx = cycleOrder.indexOf(currentVote);
     const nextIdx = (currentIdx + 1) % cycleOrder.length;
-    setSaving(true);
     onVote(cycleOrder[nextIdx]);
-    setTimeout(() => setSaving(false), 600);
   };
 
   const config = currentVote ? voteConfig[currentVote] : null;
@@ -35,7 +30,7 @@ export function VoteButton({ currentVote, onVote, size = "md" }: VoteButtonProps
     <button
       onClick={handleClick}
       className={cn(
-        "relative rounded-md font-medium transition-all select-none touch-manipulation active:scale-90 overflow-hidden",
+        "rounded-md font-medium transition-all select-none touch-manipulation active:scale-90",
         size === "sm" ? "px-2 py-1 text-xs min-h-[32px]" : "px-3 py-1.5 text-sm min-h-[44px]",
         config
           ? config.className
@@ -43,11 +38,6 @@ export function VoteButton({ currentVote, onVote, size = "md" }: VoteButtonProps
       )}
     >
       {config ? config.label : "—"}
-      {saving && (
-        <span className="absolute inset-0 flex items-center justify-center bg-inherit">
-          <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-        </span>
-      )}
     </button>
   );
 }
