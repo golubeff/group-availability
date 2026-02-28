@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { participants } from "@/lib/db/schema";
+import { participants, monthlyVotes, retreatAvailability, retreatVotes, icalEvents } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 
 export async function POST(req: NextRequest) {
@@ -23,4 +23,19 @@ export async function POST(req: NextRequest) {
 export async function GET() {
   const all = await db.select().from(participants);
   return NextResponse.json(all);
+}
+
+export async function DELETE(req: NextRequest) {
+  const { participantId } = await req.json();
+  if (!participantId) {
+    return NextResponse.json({ error: "participantId required" }, { status: 400 });
+  }
+
+  await db.delete(monthlyVotes).where(eq(monthlyVotes.participantId, participantId));
+  await db.delete(retreatAvailability).where(eq(retreatAvailability.participantId, participantId));
+  await db.delete(retreatVotes).where(eq(retreatVotes.participantId, participantId));
+  await db.delete(icalEvents).where(eq(icalEvents.participantId, participantId));
+  await db.delete(participants).where(eq(participants.id, participantId));
+
+  return NextResponse.json({ ok: true });
 }

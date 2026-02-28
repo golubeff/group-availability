@@ -250,6 +250,17 @@ export default function DashboardPage() {
     window.location.href = "/";
   };
 
+  const handleDeleteProfile = async () => {
+    if (!participant) return;
+    await fetch("/api/participants", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ participantId: participant.id }),
+    });
+    localStorage.removeItem("participant");
+    window.location.href = "/";
+  };
+
   if (loading || !participant) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -299,6 +310,7 @@ export default function DashboardPage() {
         participant={participant}
         onSwitch={handleSwitchUser}
         onOpenIcal={() => setShowIcal(true)}
+        onDelete={handleDeleteProfile}
       />
 
       {showIcal && (
