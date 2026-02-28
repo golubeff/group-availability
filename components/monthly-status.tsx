@@ -81,7 +81,7 @@ export function MonthlyStatus({ participants, allVotes, retreatMonths }: Monthly
           if (m.isRetreat) {
             return (
               <div key={m.month} className="flex items-center gap-2 text-xs py-0.5 text-muted-foreground">
-                <span className="w-20 flex-shrink-0 font-medium">{m.label.split(" ")[0]}</span>
+                <span className="w-24 flex-shrink-0 font-medium">{m.label}</span>
                 <span className="italic">Retreat month</span>
               </div>
             );
@@ -89,7 +89,7 @@ export function MonthlyStatus({ participants, allVotes, retreatMonths }: Monthly
 
           return (
             <div key={m.month} className="flex items-center gap-2 text-xs py-0.5">
-              <span className="w-20 flex-shrink-0 font-medium">{m.label.split(" ")[0]}</span>
+              <span className="w-24 flex-shrink-0 font-medium">{m.label}</span>
               <span
                 className={cn(
                   "w-2 h-2 rounded-full flex-shrink-0",
