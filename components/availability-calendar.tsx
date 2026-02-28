@@ -55,17 +55,13 @@ function nextInCycle(current: CellStatus): CellStatus {
   return statusCycle[(statusCycle.indexOf(current) + 1) % statusCycle.length];
 }
 
-const PERSON_COLORS = [
-  "bg-blue-500", "bg-violet-500", "bg-pink-500", "bg-cyan-500",
-  "bg-lime-500", "bg-rose-500", "bg-teal-500", "bg-indigo-500",
+const PERSON_HEX = [
+  "#e6194b", "#3cb44b", "#4363d8", "#f58231",
+  "#911eb4", "#42d4f4", "#f032e6", "#469990",
 ];
 
 function getColorValue(idx: number): string {
-  const colors = [
-    "#3b82f6", "#8b5cf6", "#ec4899", "#06b6d4",
-    "#84cc16", "#f43f5e", "#14b8a6", "#6366f1",
-  ];
-  return colors[idx % colors.length];
+  return PERSON_HEX[idx % PERSON_HEX.length];
 }
 
 export function AvailabilityCalendar({
@@ -209,23 +205,25 @@ export function AvailabilityCalendar({
       </div>
 
       {otherParticipants.length > 0 && (
-        <div className="flex gap-3 text-xs flex-wrap items-center">
-          <span className="text-muted-foreground">Others on cells:</span>
-          {otherParticipants.map((p, idx) => (
-            <span key={p.id} className="font-bold" style={{ color: getColorValue(idx) }}>
-              {p.name.charAt(0).toUpperCase()}
-            </span>
-          ))}
-          <span className="text-muted-foreground">= {otherParticipants.map(p => p.name).join(", ")}</span>
+        <div className="space-y-1">
+          <div className="flex gap-3 text-xs flex-wrap items-center">
+            <span className="text-muted-foreground">Others:</span>
+            {otherParticipants.map((p, idx) => (
+              <span key={p.id} className="flex items-center gap-1">
+                <span className="font-bold text-sm" style={{ color: getColorValue(idx) }}>
+                  {p.name.charAt(0).toUpperCase()}
+                </span>
+                <span className="text-muted-foreground">{p.name}</span>
+              </span>
+            ))}
+          </div>
+          <div className="flex gap-4 text-xs text-muted-foreground">
+            <span><b className="text-emerald-600">✓</b> available</span>
+            <span><b className="text-amber-600">?</b> if must</span>
+            <span><b className="text-red-600">✗</b> unavailable</span>
+          </div>
         </div>
       )}
-
-      <div className="flex gap-3 text-[11px] text-muted-foreground flex-wrap">
-        <span>✓ = available</span>
-        <span>~ = if must</span>
-        <span>✗ = unavailable</span>
-        <span className="opacity-50">· = not set</span>
-      </div>
 
       <p className="text-xs text-muted-foreground">
         Tap to cycle status. On desktop, click and drag to paint multiple days.
@@ -285,14 +283,15 @@ export function AvailabilityCalendar({
                     </span>
                   )}
                   {otherParticipants.length > 0 && (
-                    <div className="absolute bottom-0 left-1/2 -translate-x-1/2 flex gap-0 leading-none">
+                    <div className="absolute bottom-[-1px] left-1/2 -translate-x-1/2 flex gap-0 leading-none">
                       {otherParticipants.map((p, idx) => {
                         const s = getOther(p.id, cell);
-                        const symbol = s === "available" ? "✓" : s === "inconvenient" ? "~" : s === "unavailable" ? "✗" : "·";
+                        if (s === "not_set") return null;
+                        const symbol = s === "available" ? "✓" : s === "inconvenient" ? "?" : "✗";
                         return (
                           <span
                             key={p.id}
-                            className="text-[7px] font-bold"
+                            className="text-[9px] font-black"
                             style={{ color: getColorValue(idx) }}
                           >
                             {symbol}
