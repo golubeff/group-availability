@@ -284,11 +284,7 @@ export default function DashboardPage() {
     });
   };
 
-  const debouncedFetchRef = useRef<NodeJS.Timeout | null>(null);
-  const scheduleRefresh = useCallback(() => {
-    if (debouncedFetchRef.current) clearTimeout(debouncedFetchRef.current);
-    debouncedFetchRef.current = setTimeout(() => fetchAll(), 500);
-  }, [fetchAll]);
+  // scheduleRefresh removed — fetchAll is now called after debounced save completes
 
   const handleRetreatVote = async (
     retreatType: RetreatType,
@@ -498,7 +494,6 @@ export default function DashboardPage() {
                   participants={participants}
                   dates={miniDates}
                   onSetStatus={(date, status) => handleAvailabilitySet("mini", date, status)}
-                  onPaintEnd={scheduleRefresh}
                   onReset={() => handleResetAvailability("mini")}
                 />
               </div>
@@ -545,7 +540,6 @@ export default function DashboardPage() {
                   participants={participants}
                   dates={fullDates}
                   onSetStatus={(date, status) => handleAvailabilitySet("full", date, status)}
-                  onPaintEnd={scheduleRefresh}
                   onReset={() => handleResetAvailability("full")}
                 />
               </div>

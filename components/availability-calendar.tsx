@@ -22,7 +22,6 @@ interface AvailabilityCalendarProps {
   participants: Participant[];
   dates: string[];
   onSetStatus: (date: string, status: string) => void;
-  onPaintEnd?: () => void;
   onReset?: () => void;
 }
 
@@ -71,7 +70,6 @@ export function AvailabilityCalendar({
   participants,
   dates,
   onSetStatus,
-  onPaintEnd,
   onReset,
 }: AvailabilityCalendarProps) {
   const myAvailability = allAvailability.filter(
@@ -135,9 +133,8 @@ export function AvailabilityCalendar({
       mouseDownRef.current = false;
       paintTargetRef.current = null;
       paintedRef.current = new Set();
-      onPaintEnd?.();
     }
-  }, [onPaintEnd]);
+  }, []);
 
   // --- Mobile: simple tap (click) ---
   const handleClick = useCallback(
